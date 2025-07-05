@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Don't Blink Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&family=Space+Mono:wght@700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-color: #fef6f0;
+    --text-color: #3c3c3c;
+    --button-bg: #b4f8c8;
+    --button-text: #222;
+    --health-fill: linear-gradient(to right, #00bb7e, #a2f5c0);
+    --cue-color: #ff595e;
+  }
+  body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Roboto Mono', monospace;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    text-align: center;
+    padding: 20px;
+  }
+  /* Animations */
+  .flash {
+    animation: flashBg 0.25s;
+  }
+  @keyframes flashBg {
+    0% { background-color: #ffdddd; }
+    100% { background-color: transparent; }
+  }
+  .fade-in {
+    opacity: 0;
+    transform: scale(0.95);
+    animation: fadeIn 0.4s ease forwards;
+  }
+  @keyframes fadeIn {
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .bounce {
+    animation: bounceIn 0.4s ease;
+  }
+  @keyframes bounceIn {
+    0% { transform: scale(0.9); }
+    60% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+  .cue {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--cue-color);
+    margin: 12px 0;
+    display: none;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+  .health-bar {
+    height: 16px;
+    background: #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 10px auto 20px;
+    width: 80%;
+  }
+  .health-fill {
+    height: 100%;
+    background: var(--health-fill);
+    width: 100%;
+    transition: width 0.3s ease;
+  }
+  .timer {
+    font-size: 1rem;
+    margin: 8px 0;
+    font-weight: bold;
+  }
+  button {
+    background-color: var(--button-bg);
+    color: var(--button-text);
+    border: none;
+    padding: 12px 20px;
+    font-size: 1rem;
+    font-family: 'Space Mono', monospace;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s;
+  }
+  button:hover {
+    opacity: 0.9;
+  }
+  button:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+  }
+  .end-animation {
+    animation: endFlash 0.6s ease;
+  }
+  @keyframes endFlash {
+    0% { background-color: #000; color: #fff; transform: scale(1); opacity: 1; }
+    50% { background-color: #f00; transform: scale(1.05); }
+    100% { background-color: #000; transform: scale(1); opacity: 1; }
+  }
+  .theme-toggle {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: transparent;
+    border: 2px solid var(--button-text);
+    border-radius: 50px;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+  }
+  /* Accuracy messages */
+  @keyframes slideUpFadeIn {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .slide-up-fade-in {
+    animation: slideUpFadeIn 0.6s ease forwards;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-10px); }
+    40%, 80% { transform: translateX(10px); }
+  }
+  .shake {
+    animation: shake 0.5s ease;
+  }
+</style>
+</head>
+<body>
+<button class="theme-toggle" onclick="toggleTheme()">🌙 Theme</button>
+
+<div class="container fade-in" id="menu-screen">
+  <h1>Don't Blink</h1>
+  <p>Can you keep up? Blink and you lose.</p>
+  <button onclick="startGame('CLASSIC')">Start Classic</button>
+  <button onclick="startGame('MARATHON')">Start Marathon</button>
+</div>
+
+<div class="container fade-in" id="score-screen" style="display:none">
+  <h2>Game Over</h2>
+  <p class="score-result" id="final-score">Your Score: 0</p>
+  <p id="accuracy">Accuracy: 0%</p>
+  <p id="share-score">Copy your score and challenge your friends!</p>
+  <p id="accuracy-message" style="font-weight:bold; margin-top: 10px;"></p>
+  <button onclick="startGame('CLASSIC')">Play Again</button>
+  <button onclick="goToMenu()">Back to Menu</button>
+</div>
+
+<div class="container fade-in" id="game-screen" style="display:none">
+  <h2 id="game-mode">Classic Mode</h2>
+  <p>Don't blink! Wait for the cue and tap fast.</p>
+  <div class="health-bar"><div id="health-fill" class="health-fill"></div></div>
+  <p class="timer">Time Left: <span id="timer">0</span>s</p>
+  <p id="cue-message" class="cue">NOW!</p>
+  <p id="score">0</p>
+  <button onclick="handleClick()" id="blink-btn" disabled>BLINK!</button>
+</div>
+
+<script>
+  const MODES = {
+    CLASSIC: { maxTime: 5, name: 'Classic Mode' },
+    MARATHON: { maxTime: 15, name: 'Marathon Mode' }
+  };
+
+  let currentMode = null;
+  let currentScore = 0;
+  let timeLeft = 0;
+  let health = 100;
+  let gameInterval = null;
+  let cueTimeout = null;
+
+  const successSound = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_fae2a27282.mp3?filename=correct-answer-2-39668.mp3');
+  const failSound = new Audio('https://cdn.pixabay.com/download/audio/2022/03/15/audio_30b4bb8425.mp3?filename=wrong-answer-2-39669.mp3');
+
+  function startGame(mode = 'CLASSIC') {
+    clearInterval(gameInterval);
+    clearTimeout(cueTimeout);
+
+    currentMode = MODES[mode];
+    currentScore = 0;
+    timeLeft = currentMode.maxTime;
+    health = 100;
+
+    updateUIBeforeStart();
+    showGameScreen();
+
+    cueTimeout = setTimeout(showCue, 1500);
+    runGameLoop();
+  }
+
+  function updateUIBeforeStart() {
+    document.getElementById('score').textContent = currentScore;
+    document.getElementById('timer').textContent = timeLeft;
+    document.getElementById('health-fill').style.width = '100%';
+    document.getElementById('game-mode').textContent = currentMode.name;
+    document.getElementById('blink-btn').disabled = true;
+    document.getElementById('cue-message').style.display = 'none';
+  }
+
+  function showGameScreen() {
+    document.getElementById('menu-screen').style.display = 'none';
+    document.getElementById('score-screen').style.display = 'none';
+
+    const gameScreen = document.getElementById('game-screen');
+    gameScreen.style.display = 'block';
+    gameScreen.classList.remove('fade-in');
+    void gameScreen.offsetWidth; // reset animation
+    gameScreen.classList.add('fade-in');
+  }
+
+  function showCue() {
+    const cue = document.getElementById('cue-message');
+    cue.style.display = 'block';
+
+    const btn = document.getElementById('blink-btn');
+    btn.classList.remove('bounce');
+    void btn.offsetWidth; // reset animation
+    btn.classList.add('bounce');
+    btn.disabled = false;
+  }
+
+  function runGameLoop() {
+    gameInterval = setInterval(() => {
+      timeLeft--;
+      document.getElementById('timer').textContent = timeLeft;
+
+      if (timeLeft <= 0 || health <= 0) {
+        clearInterval(gameInterval);
+        endGame();
+      }
+    }, 1000);
+  }
+
+  function handleClick() {
+    const cueVisible = document.getElementById('cue-message').style.display === 'block';
+    const body = document.body;
+    const scoreEl = document.getElementById('score');
+
+    if (cueVisible) {
+      currentScore++;
+      playSound(successSound);
+      flashElement(scoreEl);
+    } else {
+      decreaseHealth(10);
+      playSound(failSound);
+      flashElement(body);
+    }
+    scoreEl.textContent = currentScore;
+  }
+
+  function decreaseHealth(amount) {
+    health = Math.max(0, health - amount);
+    updateHealthBar();
+  }
+
+  function playSound(sound) {
+    sound.currentTime = 0;
+    sound.play();
+  }
+
+  function flashElement(element) {
+    element.classList.add('flash');
+    setTimeout(() => element.classList.remove('flash'), 250);
+  }
+
+  function updateHealthBar() {
+    document.getElementById('health-fill').style.width = health + '%';
+  }
+
+  function endGame() {
+    const gameScreen = document.getElementById('game-screen');
+    gameScreen.classList.add('end-animation');
+
+    setTimeout(() => {
+      gameScreen.style.display = 'none';
+      updateScoreScreen();
+      gameScreen.classList.remove('end-animation');
+    }, 500);
+  }
+
+  function updateScoreScreen() {
+    document.getElementById('final-score').textContent = `Your Score: ${currentScore}`;
+
+    const totalClicks = currentScore + Math.floor((100 - health) / 10);
+    const accuracy = totalClicks > 0 ? Math.round((currentScore / totalClicks) * 100) : 0;
+    document.getElementById('accuracy').textContent = `Accuracy: ${accuracy}%`;
+
+    const msg = document.getElementById('accuracy-message');
+    msg.textContent = '';
+    msg.className = '';
+
+    if (accuracy >= 80) {
+      msg.textContent = '🎉 Great job!';
+      msg.style.color = '#2ecc71';
+      msg.classList.add('slide-up-fade-in');
+    } else if (accuracy < 50) {
+      msg.textContent = '⚠️ Keep practicing!';
+      msg.style.color = '#e74c3c';
+      msg.classList.add('shake');
+    } else {
+      msg.textContent = 'Good try!';
+      msg.style.color = '#e67e22';
+      msg.classList.add('fade-in');
+    }
+
+    const scoreScreen = document.getElementById('score-screen');
+    scoreScreen.style.display = 'block';
+    scoreScreen.classList.remove('fade-in');
+    void scoreScreen.offsetWidth;
+    scoreScreen.classList.add('fade-in');
+  }
+
+  function goToMenu() {
+    clearInterval(gameInterval);
+    clearTimeout(cueTimeout);
+
+    document.getElementById('game-screen').style.display = 'none';
+    document.getElementById('score-screen').style.display = 'none';
+
+    const menu = document.getElementById('menu-screen');
+    menu.style.display = 'block';
+    menu.classList.remove('fade-in');
+    void menu.offsetWidth;
+    menu.classList.add('fade-in');
+  }
+
+  function toggleTheme() {
+    const isDark = document.body.classList.toggle('dark');
+    if (isDark) {
+      applyDarkTheme();
+      localStorage.setItem('theme', 'dark');
+    } else {
+      applyLightTheme();
+      localStorage.setItem('theme', 'light');
+    }
+  }
+
+  function applyDarkTheme() {
+    document.documentElement.style.setProperty('--bg-color', '#121212');
+    document.documentElement.style.setProperty('--text-color', '#f1f1f1');
+    document.documentElement.style.setProperty('--button-bg', '#444');
+    document.documentElement.style.setProperty('--button-text', '#fff');
+    document.documentElement.style.setProperty('--health-fill', 'linear-gradient(to right, #ff6b6b, #ffa07a)');
+    document.documentElement.style.setProperty('--cue-color', '#ff8c94');
+  }
+
+  function applyLightTheme() {
+    document.documentElement.style.setProperty('--bg-color', '#fef6f0');
+    document.documentElement.style.setProperty('--text-color', '#3c3c3c');
+    document.documentElement.style.setProperty('--button-bg', '#b4f8c8');
+    document.documentElement.style.setProperty('--button-text', '#222');
+    document.documentElement.style.setProperty('--health-fill', 'linear-gradient(to right, #00bb7e, #a2f5c0)');
+    document.documentElement.style.setProperty('--cue-color', '#ff595e');
+  }
+
+  (function initTheme() {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && prefersDark)) {
+      document.body.classList.add('dark');
+      applyDarkTheme();
+    } else {
+      applyLightTheme();
+    }
+  })();
+</script>
+</body>
+</html>
